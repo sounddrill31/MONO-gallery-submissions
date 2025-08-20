@@ -61,8 +61,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/yaml-0.2.5-h280c20c_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py313h536fd9c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
-      - pypi: https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/2d/1a/e9926e352cc39f29a1da050f7798d38f7c04b6017357dffb32db27561af8/pillow_jxl_plugin-1.3.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/f4/62/a7b296c207ff702dcab8508c65c3c0b3a72f61b1967df9a4273cbe68dc76/pillow_avif_plugin-1.5.2-cp313-cp313-manylinux_2_28_x86_64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/win-64/_openmp_mutex-4.5-2_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/brotli-python-1.1.0-py313h5813708_3.conda
@@ -117,8 +116,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/yaml-0.2.5-h6a83c73_3.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstandard-0.23.0-py313ha7868ed_2.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-hbeecb71_2.conda
-      - pypi: https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cd/a9/6d70b17ec20789424d5c9c693c8a917503a45519f20e0f66d54b37e24cda/pillow_jxl_plugin-1.3.4-cp313-cp313-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/4d/40/f11c63a815bae18b4792df5435e61351d90cc4795da5cb4e19b1d4bf532e/pillow_avif_plugin-1.5.2-cp313-cp313-win_amd64.whl
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
   sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
@@ -911,11 +909,6 @@ packages:
   purls: []
   size: 9275175
   timestamp: 1754467904482
-- pypi: https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl
-  name: packaging
-  version: '25.0'
-  sha256: 29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484
-  requires_python: '>=3.8'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pillow-11.3.0-py313h8db990d_0.conda
   sha256: 73067c9a1ea4857ce9fb6788d404cd7d931ba323ad26eddf083c5b12dc8d73c0
   md5: 114a74a6e184101112fdffd3a1cb5b8f
@@ -963,28 +956,26 @@ packages:
   - pkg:pypi/pillow?source=hash-mapping
   size: 42177350
   timestamp: 1751482641943
-- pypi: https://files.pythonhosted.org/packages/2d/1a/e9926e352cc39f29a1da050f7798d38f7c04b6017357dffb32db27561af8/pillow_jxl_plugin-1.3.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-  name: pillow-jxl-plugin
-  version: 1.3.4
-  sha256: 455b3d14f8ee8e9fc40d6e986b5b485a4d8d2ddfc1778f2af09a72d1ee13ce31
+- pypi: https://files.pythonhosted.org/packages/4d/40/f11c63a815bae18b4792df5435e61351d90cc4795da5cb4e19b1d4bf532e/pillow_avif_plugin-1.5.2-cp313-cp313-win_amd64.whl
+  name: pillow-avif-plugin
+  version: 1.5.2
+  sha256: b840a431dbb04f60a18bbd2e28c2b26d845efcddd28f98e9386eb5a5938a3b38
   requires_dist:
-  - packaging
-  - pillow
-  - numpy ; extra == 'dev'
-  - pytest ; extra == 'dev'
-  - pyexiv2 ; extra == 'dev'
-  requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/cd/a9/6d70b17ec20789424d5c9c693c8a917503a45519f20e0f66d54b37e24cda/pillow_jxl_plugin-1.3.4-cp313-cp313-win_amd64.whl
-  name: pillow-jxl-plugin
-  version: 1.3.4
-  sha256: 492c41232616f2a2efae18bf3fd0e20312019af649f7372c583dd4f5bbffe914
+  - pytest ; extra == 'tests'
+  - packaging ; extra == 'tests'
+  - pytest-cov ; extra == 'tests'
+  - test-image-results ; extra == 'tests'
+  - pillow ; extra == 'tests'
+- pypi: https://files.pythonhosted.org/packages/f4/62/a7b296c207ff702dcab8508c65c3c0b3a72f61b1967df9a4273cbe68dc76/pillow_avif_plugin-1.5.2-cp313-cp313-manylinux_2_28_x86_64.whl
+  name: pillow-avif-plugin
+  version: 1.5.2
+  sha256: 8b0c86ade32600b832f2323409239fadd46d17a05380d11836e7fc24e54c170a
   requires_dist:
-  - packaging
-  - pillow
-  - numpy ; extra == 'dev'
-  - pytest ; extra == 'dev'
-  - pyexiv2 ; extra == 'dev'
-  requires_python: '>=3.9'
+  - pytest ; extra == 'tests'
+  - packaging ; extra == 'tests'
+  - pytest-cov ; extra == 'tests'
+  - test-image-results ; extra == 'tests'
+  - pillow ; extra == 'tests'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-hb9d3cd8_1002.conda
   sha256: 9c88f8c64590e9567c6c80823f0328e58d3b1efb0e1c539c0315ceca764e0973
   md5: b3c17d95b5a10c6e64a21fa17573e70e
