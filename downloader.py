@@ -7,6 +7,7 @@ Google Drive File Organizer for Event Submissions
 
 This script downloads files from Google Drive links and organizes them into a structured format.
 By default converts all downloaded images directly to AVIF (small size, high quality) unless run with --uncompressed.
+PDF files are converted to AVIF via pymupdf (fitz) rendering either directly or through PNG intermediate.
 """
 
 
@@ -21,6 +22,7 @@ import shutil
 from pathlib import Path
 from PIL import Image
 import pillow_avif  # registers AVIF support in Pillow
+import fitz  # PyMuPDF for PDF rendering
 
 
 def extract_file_id_from_drive_url(url):
@@ -70,6 +72,30 @@ def log_failure(message):
         log.write(message + "\n")
 
 
+def convert_pdf_to_avif(input_path):
+    """
+    Convert PDF file at input_path to AVIF image by rendering first page.
+    Returns the new AVIF path on success, None on failure.
+    """
+    try:
+        doc = fitz.open(input_path)
+        if doc.page_count < 1:
+            raise RuntimeError("PDF has no pages")
+        page = doc.load_page(0)  # first page
+        # Render page to pixmap (RGBA)
+        pix = page.get_pixmap(alpha=False)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        avif_path = os.path.splitext(input_path)[0] + '.avif'
+        img.save(avif_path, format='AVIF', quality=80, speed=6)
+        doc.close()
+        os.remove(input_path)
+        print(f"Converted PDF {input_path} to {avif_path} (AVIF, quality=80)")
+        return avif_path
+    except Exception as e:
+        log_failure(f"PDF to AVIF conversion failed for {input_path}: {e}")
+        return None
+
+
 def convert_to_avif_high_quality(input_path):
     """
     Convert image file at input_path to AVIF with high perceptual quality and small size.
@@ -93,6 +119,7 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
     Download file from Google Drive using file ID.
     Then convert to AVIF unless uncompressed=True.
     Logs failures to failed.txt.
+    Saves PDFs directly as .pdf and converts immediately.
     """
     session = requests.Session()
     base_url = "https://drive.google.com/uc?export=download&id={}"
@@ -110,8 +137,9 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
                 time.sleep(2)
                 continue
 
-
             ext = get_file_extension_from_headers(response.headers)
+
+            # Save file with appropriate extension immediately (no .bin)
             raw_path = output_base.replace('.avif', ext)
             os.makedirs(os.path.dirname(raw_path), exist_ok=True)
             with open(raw_path, 'wb') as f:
@@ -120,23 +148,33 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
                         f.write(chunk)
             print(f"✓ Downloaded: {raw_path}")
 
+            if uncompressed:
+                return True
 
-            # Convert to AVIF if applicable and not skipping conversion
-            if (not uncompressed
-                and ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.heic', '.heif']):
+            if ext == '.pdf' or ext == '.bin':
+                print(f"ℹ️ Attempting PDF to AVIF conversion for {raw_path}")
+                avif_path = convert_pdf_to_avif(raw_path)
+                if avif_path:
+                    print(f"✓ PDF converted to AVIF: {avif_path}")
+                    return True
+                else:
+                    print(f"✗ PDF to AVIF conversion failed for {raw_path}")
+                    return False
+
+            elif ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.heic', '.heif']:
                 avif_path = convert_to_avif_high_quality(raw_path)
-                if not avif_path:
+                if avif_path:
+                    return True
+                else:
                     print(f"✗ AVIF conversion failed for {raw_path}")
                     return False
 
-
+            # For unknown/non-image, keep raw file
             return True
-
 
         except Exception as e:
             log_failure(f"Attempt {attempt+1} exception for ID {file_id}: {e}")
             time.sleep(2)
-
 
     return False
 
@@ -191,10 +229,9 @@ if __name__ == "__main__":
         shutil.rmtree(OUT_PATH)
     OUT_PATH.mkdir(parents=True, exist_ok=True)
 
-
     print("🚀 Starting Organizer")
     if uncompressed:
         print("ℹ️ Skipping AVIF conversion (--uncompressed)")
-    print("="*40)
+    print("=" * 40)
     organize_files_from_csv(CSV_FILE, OUT_DIR, uncompressed)
     print("\n🎉 Done! Use --uncompressed to keep originals.")

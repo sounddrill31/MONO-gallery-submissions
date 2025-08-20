@@ -23,3 +23,4 @@ aom = ">=3.9.1,<4"
 
 [pypi-dependencies]
 pillow-avif-plugin = ">=1.5.2, <2"
+pymupdf = ">=1.26.3, <2"
