@@ -2,11 +2,15 @@
 .pixi/*
 !.pixi/config.toml
 
+# Temp files
 *.bak
-output/
+failed.txt
+*.diff
 
-public
-*.csv
+# Work folders
+output/
+public/
 
 #sensitive
 teams.yaml
+*.csv

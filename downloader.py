@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """
 Google Drive File Organizer for Event Submissions
+
 This script downloads files from Google Drive links and organizes them into a structured format.
 """
 
@@ -11,6 +13,10 @@ import requests
 from urllib.parse import parse_qs, urlparse
 import time
 from pathlib import Path
+from PIL import Image
+import mimetypes
+import shutil
+
 
 def extract_file_id_from_drive_url(url):
     """Extract Google Drive file ID from various URL formats"""
@@ -48,56 +54,108 @@ def get_file_extension_from_headers(headers):
         'video/avi': '.avi',
         'video/mov': '.mov',
     }
+    return extension_map.get(content_type, '.png')  # Default to .png
 
-    return extension_map.get(content_type, '.jpg')  # Default to .jpg
+def log_failure(message):
+    """Log failures to failed.txt"""
+    with open('failed.txt', 'a') as log:
+        log.write(message + "\n")
+
+def detect_and_convert_to_png(file_path):
+    """
+    Detects the file type and converts to PNG if not already.
+    Returns True on success, False on failure (and logs error).
+    """
+    try:
+        mime_type, _ = mimetypes.guess_type(file_path)
+        ext = os.path.splitext(file_path)[1].lower()
+
+        # Already a PNG
+        if ext == '.png':
+            return True
+
+        # Raster image formats
+        if mime_type and mime_type.startswith('image/'):
+            try:
+                im = Image.open(file_path)
+                png_path = os.path.splitext(file_path)[0] + '.png'
+                im.save(png_path, format='PNG')
+                os.remove(file_path)
+                print(f"Converted {file_path} to {png_path}")
+                return True
+            except Exception as e:
+                log_failure(f"Conversion failed for {file_path}: {e}")
+                return False
+
+        # PDF fallback (if Pillow supports)
+        if ext == '.pdf':
+            try:
+                im = Image.open(file_path)
+                png_path = os.path.splitext(file_path)[0] + '.png'
+                im.save(png_path, format='PNG')
+                os.remove(file_path)
+                print(f"Converted PDF {file_path} to {png_path}")
+                return True
+            except Exception as e:
+                log_failure(f"PDF conversion failed for {file_path}: {e}")
+                return False
+
+        # Unhandled type
+        log_failure(f"Unhandled file type: {file_path} ({mime_type})")
+        return False
+    except Exception as e:
+        log_failure(f"Type detection failed for {file_path}: {e}")
+        return False
 
 def download_file_from_drive(file_id, output_path, max_retries=3):
-    """Download file from Google Drive using file ID"""
-
-    # Google Drive direct download URL
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-
+    """
+    Download file from Google Drive using file ID, then convert to PNG if needed.
+    Logs any download or conversion failures to failed.txt.
+    """
     session = requests.Session()
+    base_url = "https://drive.google.com/uc?export=download&id={}"
 
     for attempt in range(max_retries):
         try:
-            # Initial request
+            download_url = base_url.format(file_id)
             response = session.get(download_url, stream=True)
 
             # Handle Google's virus scan warning for large files
             if 'download_warning' in response.text:
-                # Extract confirmation token
-                for line in response.text.split('\n'):
+                for line in response.text.splitlines():
                     if 'confirm=' in line:
-                        confirm_token = line.split('confirm=')[1].split('&')[0]
-                        download_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}"
+                        token = line.split('confirm=')[1].split('&')[0]
+                        download_url = (
+                            f"https://drive.google.com/uc?export=download&confirm={token}&id={file_id}"
+                        )
                         response = session.get(download_url, stream=True)
                         break
 
             if response.status_code == 200:
-                # Get file extension from headers
-                file_extension = get_file_extension_from_headers(response.headers)
-                final_output_path = output_path.replace('.jpg', file_extension)
-
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(final_output_path), exist_ok=True)
-
-                # Download and save file
-                with open(final_output_path, 'wb') as f:
+                # Determine extension and build final path
+                ext = get_file_extension_from_headers(response.headers)
+                final_path = output_path.replace('.png', ext)
+                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                with open(final_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
+                print(f"✓ Downloaded: {final_path}")
 
-                print(f"✓ Downloaded: {final_output_path}")
+                # Convert non-jpg/jpeg/png files to PNG; leave jpg/jpeg/png as is
+                ext_lower = os.path.splitext(final_path)[1].lower()
+                if ext_lower not in ['.jpg', '.jpeg', '.png']:
+                    if not detect_and_convert_to_png(final_path):
+                        print(f"✗ Conversion failed for {final_path}")
                 return True
             else:
                 print(f"✗ Failed to download file ID {file_id}: HTTP {response.status_code}")
-
+                log_failure(f"Download failed (HTTP {response.status_code}) for ID {file_id}")
         except Exception as e:
-            print(f"✗ Attempt {attempt + 1} failed for file ID {file_id}: {str(e)}")
+            print(f"✗ Attempt {attempt + 1} failed for file ID {file_id}: {e}")
+            log_failure(f"Attempt {attempt + 1} exception for ID {file_id}: {e}")
             if attempt < max_retries - 1:
-                time.sleep(2)  # Wait before retry
-
+                time.sleep(2)
     return False
 
 def extract_team_number(team_number_str):
@@ -140,19 +198,18 @@ def organize_files_from_csv(csv_file_path, output_base_dir='out/images'):
                     file_id = extract_file_id_from_drive_url(drive_url)
 
                     if file_id:
-                        output_file_path = os.path.join(team_dir, f'Photo{photo_num}.jpg')
-
-                        print(f"  📥 Downloading Photo {photo_num}...")
+                        output_file_path = os.path.join(team_dir, f'Photo{photo_num}.png')
+                        print(f" 📥 Downloading Photo {photo_num}...")
                         if download_file_from_drive(file_id, output_file_path):
                             successful_downloads += 1
                         else:
                             failed_downloads += 1
-                            print(f"    ✗ Failed to download Photo {photo_num}")
+                            print(f" ✗ Failed to download Photo {photo_num}")
                     else:
-                        print(f"    ⚠️  Could not extract file ID from URL for Photo {photo_num}")
+                        print(f" ⚠️ Could not extract file ID from URL for Photo {photo_num}")
                         failed_downloads += 1
                 else:
-                    print(f"    ⚠️  No URL found for Photo {photo_num}")
+                    print(f" ⚠️ No URL found for Photo {photo_num}")
 
             # Add a small delay between teams to be respectful to Google's servers
             time.sleep(1)
@@ -166,6 +223,11 @@ if __name__ == "__main__":
     # Configuration
     CSV_FILE = "data.csv"  # Path to your cleaned CSV file
     OUTPUT_DIR = "public/image"  # Output directory for organized files
+    OUTPUT_PATH = Path('public') / 'image' 
+    if OUTPUT_PATH.exists():
+        shutil.rmtree(OUTPUT_PATH)
+    OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+
 
     print("🚀 Starting Google Drive File Organizer")
     print("=" * 50)

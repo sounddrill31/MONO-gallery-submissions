@@ -9,10 +9,11 @@ version = "0.1.0"
 prep_yaml = "python generate_teams.py"
 generate = "python generate_site.py"
 download = "python downloader.py"
-prepare = "pixi run prep_yaml && pixi run download && pixi run generate"
-start = "pixi run prepare && python -m 'http.server' 8000 -d 'output'"
+prepare = "pixi run download && pixi run prep_yaml && pixi run generate"
+start = "pixi run prepare && echo 'Open http://localhost:8000 to see the web page!' && python -m 'http.server' 8000 -d 'output'"
 
 [dependencies]
 python = ">=3.13.5,<3.14"
 pyyaml = ">=6.0.2,<7"
 requests = ">=2.32.5,<3"
+pillow = ">=11.3.0,<12"
