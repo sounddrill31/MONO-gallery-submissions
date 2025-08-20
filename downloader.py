@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
+
 """
 Google Drive File Organizer for Event Submissions
+
 
 This script downloads files from Google Drive links and organizes them into a structured format.
 By default converts all downloaded images directly to AVIF (small size, high quality) unless run with --uncompressed.
 """
+
 
 import os
 import re
@@ -18,6 +21,7 @@ import shutil
 from pathlib import Path
 from PIL import Image
 import pillow_avif  # registers AVIF support in Pillow
+
 
 def extract_file_id_from_drive_url(url):
     """Extract Google Drive file ID from various URL formats"""
@@ -34,6 +38,7 @@ def extract_file_id_from_drive_url(url):
             return match.group(1)
     return None
 
+
 def get_file_extension_from_headers(headers):
     """Determine file extension from HTTP headers"""
     content_type = headers.get('content-type', '').lower()
@@ -46,13 +51,24 @@ def get_file_extension_from_headers(headers):
         'image/webp': '.webp',
         'image/tiff': '.tiff',
         'application/pdf': '.pdf',
+        'image/heic': '.heic',
+        'image/heif': '.heif',
     }
-    return extension_map.get(content_type, '.bin')
+    # Return mapped extension or fallback to mimetypes.guess_extension or '.bin'
+    ext = extension_map.get(content_type)
+    if ext:
+        return ext
+    guessed_ext = mimetypes.guess_extension(content_type)
+    if guessed_ext:
+        return guessed_ext
+    return '.bin'
+
 
 def log_failure(message):
     """Log failures to failed.txt"""
     with open('failed.txt', 'a') as log:
         log.write(message + "\n")
+
 
 def convert_to_avif_high_quality(input_path):
     """
@@ -70,6 +86,7 @@ def convert_to_avif_high_quality(input_path):
     except Exception as e:
         log_failure(f"AVIF conversion failed for {input_path}: {e}")
         return None
+
 
 def download_file_from_drive(file_id, output_base, uncompressed=False, max_retries=3):
     """
@@ -93,6 +110,7 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
                 time.sleep(2)
                 continue
 
+
             ext = get_file_extension_from_headers(response.headers)
             raw_path = output_base.replace('.avif', ext)
             os.makedirs(os.path.dirname(raw_path), exist_ok=True)
@@ -102,24 +120,32 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
                         f.write(chunk)
             print(f"✓ Downloaded: {raw_path}")
 
-            if not uncompressed and ext.lower().startswith('.'):
+
+            # Convert to AVIF if applicable and not skipping conversion
+            if (not uncompressed
+                and ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.heic', '.heif']):
                 avif_path = convert_to_avif_high_quality(raw_path)
                 if not avif_path:
                     print(f"✗ AVIF conversion failed for {raw_path}")
                     return False
 
+
             return True
+
 
         except Exception as e:
             log_failure(f"Attempt {attempt+1} exception for ID {file_id}: {e}")
             time.sleep(2)
 
+
     return False
+
 
 def extract_team_number(team_str):
     """Extract numeric team number from 'Team X' format"""
     m = re.search(r'Team (\d+)', team_str)
     return m.group(1) if m else team_str.replace('Team ', '').strip()
+
 
 def organize_files_from_csv(csv_path, out_dir='out/images', uncompressed=False):
     """Download and organize all submissions, converting to AVIF by default."""
@@ -155,6 +181,7 @@ def organize_files_from_csv(csv_path, out_dir='out/images', uncompressed=False):
     print(f"\n📊 Completed: {succ} succeeded, {fail} failed")
     print(f"📁 Files in {os.path.abspath(out_dir)}")
 
+
 if __name__ == "__main__":
     uncompressed = '--uncompressed' in sys.argv
     CSV_FILE = "data.csv"
@@ -163,6 +190,7 @@ if __name__ == "__main__":
     if OUT_PATH.exists():
         shutil.rmtree(OUT_PATH)
     OUT_PATH.mkdir(parents=True, exist_ok=True)
+
 
     print("🚀 Starting Organizer")
     if uncompressed:
