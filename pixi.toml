@@ -1,0 +1,17 @@
+[workspace]
+authors = ["84176052+sounddrill31 <84176052+sounddrill31@users.noreply.github.com>"]
+channels = ["conda-forge"]
+name = "data-forms-website"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+generate = "python generate_site.py"
+download = "python downloader.py"
+prepare = "pixi run download && pixi run generate"
+start = "pixi run prepare && python -m 'http.server' 8000 -d 'output'"
+
+[dependencies]
+python = ">=3.13.5,<3.14"
+pyyaml = ">=6.0.2,<7"
+requests = ">=2.32.5,<3"

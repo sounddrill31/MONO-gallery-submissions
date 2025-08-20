@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photography Contest Gallery - NeoTech Club</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'mono': ['Space Mono', 'monospace'],
+                    },
+                },
+            },
+        }
+    </script>
+
+    <!-- Space Mono Font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+        * { font-family: 'Space Mono', monospace; }
+
+        .course-bsc { border-color: #000000; }
+        .course-bba { border-color: #4a4a4a; }
+        .course-bca { border-color: #8a8a8a; }
+        .course-bcom { border-color: #b0b0b0; }
+        .course-mba { border-color: #666666; }
+    </style>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-white text-black min-h-screen font-mono">
+
+    <!-- Header -->
+    <header class="bg-black text-white p-6">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold mb-2">PHOTOGRAPHY CONTEST</h1>
+                <p class="text-lg opacity-90">Submission Gallery</p>
+            </div>
+            <button id="statsBtn" class="bg-white text-black px-4 py-2 hover:bg-gray-200 transition-colors text-sm font-bold">
+                STATS
+            </button>
+        </div>
+    </header>
+
+    <!-- Vote Button -->
+    <div class="max-w-7xl mx-auto p-6">
+        <button id="voteBtn" class="bg-black text-white px-8 py-3 hover:bg-gray-800 transition-colors font-bold" style="display: none;">
+            CAST YOUR VOTE
+        </button>
+    </div>
+
+    <!-- Gallery Grid -->
+    <main class="max-w-7xl mx-auto p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="galleryGrid">
+            <!-- Team cards will be generated here -->
+        </div>
+    </main>
+
+    <!-- Fullscreen Gallery Modal -->
+    <div id="galleryModal" class="fixed inset-0 modal-overlay z-50 hidden">
+        <div class="relative w-full h-full flex items-center justify-center">
+
+            <!-- Close Button -->
+            <button id="closeModal" class="absolute top-6 right-6 text-white text-2xl z-10 gallery-nav-btn p-3 rounded">
+                ✕
+            </button>
+
+            <!-- Navigation Buttons -->
+            <button id="prevBtn" class="absolute left-6 top-1/2 transform -translate-y-1/2 text-white text-2xl z-10 gallery-nav-btn p-3 rounded">
+                ←
+            </button>
+            <button id="nextBtn" class="absolute right-6 top-1/2 transform -translate-y-1/2 text-white text-2xl z-10 gallery-nav-btn p-3 rounded">
+                →
+            </button>
+
+            <!-- Rotate Buttons -->
+            <button id="rotateLeftBtn" class="absolute bottom-20 left-6 text-white z-10 gallery-nav-btn p-2 rounded text-sm">
+                ↻ ROTATE LEFT
+            </button>
+            <button id="rotateRightBtn" class="absolute bottom-20 right-6 text-white z-10 gallery-nav-btn p-2 rounded text-sm">
+                ROTATE RIGHT ↺
+            </button>
+
+            <!-- Team Info Panel -->
+            <div id="teamInfo" class="absolute top-6 left-6 text-white z-10 bg-black bg-opacity-70 p-4 rounded cursor-pointer hover:bg-opacity-90 transition-all">
+                <h3 id="teamName" class="font-bold text-lg">Team Name</h3>
+                <p id="teamDetails" class="text-sm opacity-90">Team details</p>
+                <div id="teamMembers" class="text-sm mt-2"></div>
+                <div id="teamContact" class="text-sm mt-1"></div>
+                <p class="text-xs mt-2 opacity-70">Click for full details</p>
+            </div>
+
+            <!-- Main Image -->
+            <img id="galleryImage" src="" alt="" class="max-w-full max-h-full object-contain">
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div id="statsModal" class="fixed inset-0 modal-overlay z-50 hidden">
+        <div class="relative w-full h-full flex items-center justify-center p-6">
+            <div class="bg-white text-black max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-lg">
+
+                <!-- Stats Header -->
+                <div class="bg-black text-white p-6 rounded-t-lg flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">CONTEST STATISTICS</h2>
+                    <button id="closeStatsModal" class="text-white text-2xl hover:opacity-70">✕</button>
+                </div>
+
+                <!-- Stats Content -->
+                <div class="p-6" id="statsContent">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Team Details Modal -->
+    <div id="teamDetailsModal" class="fixed inset-0 modal-overlay z-60 hidden">
+        <div class="relative w-full h-full flex items-center justify-center p-6">
+            <div class="bg-white text-black max-w-lg w-full rounded-lg">
+
+                <!-- Team Details Header -->
+                <div class="bg-black text-white p-6 rounded-t-lg flex justify-between items-center">
+                    <h2 class="text-xl font-bold" id="teamDetailsTitle">Team Details</h2>
+                    <button id="closeTeamDetailsModal" class="text-white text-2xl hover:opacity-70">✕</button>
+                </div>
+
+                <!-- Team Details Content -->
+                <div class="p-6 overflow-y-auto" id="teamDetailsContent">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-black text-white p-8 mt-16">
+        <div class="max-w-7xl mx-auto text-center">
+            <p class="mb-2">© 2025 (BCA) NeoTech Club, GCC</p>
+            <p class="text-sm opacity-70">
+                Built with <a href="https://mono.layogtima.com" target="_blank" class="underline hover:no-underline">MONO Design</a> in mind
+            </p>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
