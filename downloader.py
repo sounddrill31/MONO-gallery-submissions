@@ -8,8 +8,9 @@ Google Drive File Organizer for Event Submissions
 This script downloads files from Google Drive links and organizes them into a structured format.
 By default converts all downloaded images directly to AVIF (small size, high quality) unless run with --uncompressed.
 PDF files are converted to AVIF via pymupdf (fitz) rendering either directly or through PNG intermediate.
+Supports HEIC and HEIF image formats via pillow_heif integration.
+If a downloaded file is saved as .bin, this script inspects the content to detect PDF signatures before deciding conversion.
 """
-
 
 import os
 import re
@@ -21,12 +22,25 @@ import requests
 import shutil
 from pathlib import Path
 from PIL import Image
+
 import pillow_avif  # registers AVIF support in Pillow
 import fitz  # PyMuPDF for PDF rendering
 
 
+# For HEIF/HEIC support lazy load
+_has_heif_support = False
+def register_heif_if_needed():
+    global _has_heif_support
+    if not _has_heif_support:
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+            _has_heif_support = True
+        except ImportError:
+            print("⚠️ pillow_heif not installed; HEIC/HEIF support disabled.")
+
+
 def extract_file_id_from_drive_url(url):
-    """Extract Google Drive file ID from various URL formats"""
     if not url or 'drive.google.com' not in url:
         return None
     patterns = [
@@ -42,7 +56,6 @@ def extract_file_id_from_drive_url(url):
 
 
 def get_file_extension_from_headers(headers):
-    """Determine file extension from HTTP headers"""
     content_type = headers.get('content-type', '').lower()
     extension_map = {
         'image/jpeg': '.jpg',
@@ -56,7 +69,6 @@ def get_file_extension_from_headers(headers):
         'image/heic': '.heic',
         'image/heif': '.heif',
     }
-    # Return mapped extension or fallback to mimetypes.guess_extension or '.bin'
     ext = extension_map.get(content_type)
     if ext:
         return ext
@@ -67,22 +79,26 @@ def get_file_extension_from_headers(headers):
 
 
 def log_failure(message):
-    """Log failures to failed.txt"""
     with open('failed.txt', 'a') as log:
         log.write(message + "\n")
 
 
+def is_pdf_file(path):
+    """Simple check of PDF file signature (starts with %PDF)"""
+    try:
+        with open(path, 'rb') as f:
+            header = f.read(5)
+            return header == b'%PDF-'
+    except Exception:
+        return False
+
+
 def convert_pdf_to_avif(input_path):
-    """
-    Convert PDF file at input_path to AVIF image by rendering first page.
-    Returns the new AVIF path on success, None on failure.
-    """
     try:
         doc = fitz.open(input_path)
         if doc.page_count < 1:
             raise RuntimeError("PDF has no pages")
-        page = doc.load_page(0)  # first page
-        # Render page to pixmap (RGBA)
+        page = doc.load_page(0)
         pix = page.get_pixmap(alpha=False)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         avif_path = os.path.splitext(input_path)[0] + '.avif'
@@ -97,14 +113,9 @@ def convert_pdf_to_avif(input_path):
 
 
 def convert_to_avif_high_quality(input_path):
-    """
-    Convert image file at input_path to AVIF with high perceptual quality and small size.
-    Returns the new path on success, None on failure.
-    """
     try:
         im = Image.open(input_path)
         avif_path = os.path.splitext(input_path)[0] + '.avif'
-        # quality=80 provides high visual fidelity; speed=6 balances compression time
         im.save(avif_path, format='AVIF', quality=80, speed=6)
         os.remove(input_path)
         print(f"Converted {input_path} to {avif_path} (AVIF, quality=80)")
@@ -115,14 +126,9 @@ def convert_to_avif_high_quality(input_path):
 
 
 def download_file_from_drive(file_id, output_base, uncompressed=False, max_retries=3):
-    """
-    Download file from Google Drive using file ID.
-    Then convert to AVIF unless uncompressed=True.
-    Logs failures to failed.txt.
-    Saves PDFs directly as .pdf and converts immediately.
-    """
     session = requests.Session()
     base_url = "https://drive.google.com/uc?export=download&id={}"
+
     for attempt in range(max_retries):
         try:
             response = session.get(base_url.format(file_id), stream=True)
@@ -139,7 +145,7 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
 
             ext = get_file_extension_from_headers(response.headers)
 
-            # Save file with appropriate extension immediately (no .bin)
+            # Save raw file
             raw_path = output_base.replace('.avif', ext)
             os.makedirs(os.path.dirname(raw_path), exist_ok=True)
             with open(raw_path, 'wb') as f:
@@ -151,7 +157,25 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
             if uncompressed:
                 return True
 
-            if ext == '.pdf' or ext == '.bin':
+            # If got .bin file, try to detect PDF or HEIC/HEIF
+            if ext == '.bin':
+                if is_pdf_file(raw_path):
+                    ext = '.pdf'
+                    # Rename to .pdf for clarity
+                    new_path = os.path.splitext(raw_path)[0] + '.pdf'
+                    os.rename(raw_path, new_path)
+                    raw_path = new_path
+                    print(f"ℹ️ Detected PDF content in .bin, renamed to {raw_path}")
+                else:
+                    # Assume heif/heic candidate, register support
+                    ext = '.heic'  # or .heif, pick .heic as default
+                    new_path = os.path.splitext(raw_path)[0] + ext 
+                    os.rename(raw_path, new_path)
+                    raw_path = new_path
+                    print(f"ℹ️ Treated .bin as HEIC/HEIF, renamed to {raw_path}")
+                    register_heif_if_needed()
+
+            if ext == '.pdf':
                 print(f"ℹ️ Attempting PDF to AVIF conversion for {raw_path}")
                 avif_path = convert_pdf_to_avif(raw_path)
                 if avif_path:
@@ -169,7 +193,6 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
                     print(f"✗ AVIF conversion failed for {raw_path}")
                     return False
 
-            # For unknown/non-image, keep raw file
             return True
 
         except Exception as e:
@@ -180,13 +203,11 @@ def download_file_from_drive(file_id, output_base, uncompressed=False, max_retri
 
 
 def extract_team_number(team_str):
-    """Extract numeric team number from 'Team X' format"""
     m = re.search(r'Team (\d+)', team_str)
     return m.group(1) if m else team_str.replace('Team ', '').strip()
 
 
 def organize_files_from_csv(csv_path, out_dir='out/images', uncompressed=False):
-    """Download and organize all submissions, converting to AVIF by default."""
     if not os.path.exists(csv_path):
         print(f"✗ CSV not found: {csv_path}")
         return
@@ -198,8 +219,8 @@ def organize_files_from_csv(csv_path, out_dir='out/images', uncompressed=False):
             team_dir = os.path.join(out_dir, team)
             os.makedirs(team_dir, exist_ok=True)
             print(f"\n📋 Team {team}: {row.get('Team Name','')}")
-            for i in range(1,5):
-                url = row.get(f'Submission Image {i}','').strip()
+            for i in range(1, 5):
+                url = row.get(f'Submission Image {i}', '').strip()
                 if not url:
                     print(f" ⚠️ No URL for Photo {i}")
                     continue

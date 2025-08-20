@@ -8,6 +8,15 @@ This was our first event but we're gonna make it better!
 
 This is a WIP project to turn this data into a beautiful website inspired by [MONO Design](https://mono.layogtima.com/) semi-automatically, with a little bit of manual work.
 
+
+## Image Backends
+> [!WARNING]
+> The downloader script is hardcoded to account for google drive links. This may break at any time!
+
+TODO: Add direct downloads or local file paths.
+
+## Config
+
 ### Example teams.yaml
 This will be automatically generated from data.csv
 ```yml
