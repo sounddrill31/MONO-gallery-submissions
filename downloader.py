@@ -18,7 +18,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import urlparse
 from PIL import Image
-import pillow_jxl_plugin  # registers JXL support in Pillow
+import pillow_jxl  # registers JXL support in Pillow
 
 def extract_file_id_from_drive_url(url):
     """Extract Google Drive file ID from various URL formats"""
