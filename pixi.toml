@@ -6,9 +6,10 @@ platforms = ["win-64"]
 version = "0.1.0"
 
 [tasks]
+prep_yaml = "python generate_teams.py"
 generate = "python generate_site.py"
 download = "python downloader.py"
-prepare = "pixi run download && pixi run generate"
+prepare = "pixi run prep_yaml && pixi run download && pixi run generate"
 start = "pixi run prepare && python -m 'http.server' 8000 -d 'output'"
 
 [dependencies]

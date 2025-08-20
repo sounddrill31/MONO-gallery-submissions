@@ -9,7 +9,7 @@ This was our first event but we're gonna make it better!
 This is a WIP project to turn this data into a beautiful website inspired by [MONO Design](https://mono.layogtima.com/) semi-automatically, with a little bit of manual work.
 
 ### Example teams.yaml
-This was seperated/not automated in order to allow last minute changes. <!-- TODO: Automate this --> 
+This will be automatically generated from data.csv
 ```yml
 teams:
 - team_number: 1
