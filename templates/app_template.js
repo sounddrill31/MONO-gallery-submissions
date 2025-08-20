@@ -1,5 +1,5 @@
 // Photography Contest Gallery - MONO Design System
-// Enhanced with Stats Modal and Team Details
+// Enhanced with Stats Modal, Team Details, Drag-to-Zoom, and Blurred Previews
 
 class GalleryApp {
     constructor() {
@@ -10,6 +10,15 @@ class GalleryApp {
         this.currentScale = 1.0;
         this.isModalOpen = false;
         this.stats = this.calculateStats();
+
+        // Drag and zoom state
+        this.isDragging = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.imageOffsetX = 0;
+        this.imageOffsetY = 0;
+        this.imageStartOffsetX = 0;
+        this.imageStartOffsetY = 0;
 
         this.init();
     }
@@ -51,6 +60,13 @@ class GalleryApp {
         };
     }
 
+    // Generate blurred/low-res version of image URL
+    generatePreviewUrl(originalUrl) {
+        // For demonstration, we'll use a blur parameter if the image service supports it
+        // In real implementation, you might want to generate actual thumbnails
+        return originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'blur=2&w=150&h=150&q=30';
+    }
+
     renderGalleryGrid() {
         const grid = document.getElementById('galleryGrid');
         grid.innerHTML = '';
@@ -75,16 +91,21 @@ class GalleryApp {
                 </div>
 
                 <div class="grid grid-cols-2 gap-1 p-2">
-                    ${team.images.map((img, index) => `
+                    ${team.images.map((img, index) => {
+                        const previewUrl = this.generatePreviewUrl(img);
+                        return `
                         <div class="relative">
-                            <img src="${img}" 
+                            <img src="${previewUrl}" 
+                                 data-full-src="${img}"
                                  alt="${team.team_name} Photo ${index + 1}"
                                  class="image-preview w-full cursor-pointer hover:opacity-80 transition-opacity"
                                  onclick="window.galleryApp.openGallery(${team.team_number}, ${index + 1})"
                                  loading="lazy"
-                                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4gPHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2Y1ZjVmNSIvPiA8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg=='">
+                                 onload="this.classList.add('loaded')"
+                                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4gPHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2Y1ZjVmNSIvPiA8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg=='; this.classList.add('loaded')">
                         </div>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </div>
             </div>
         `;
@@ -135,23 +156,180 @@ class GalleryApp {
         document.getElementById('teamDetailsModal').addEventListener('click', (e) => {
             if (e.target.id === 'teamDetailsModal') this.closeTeamDetailsModal();
         });
+
+        // Drag and zoom events for gallery image
+        this.setupDragZoom();
     }
-    
+
+    setupDragZoom() {
+        const galleryImage = document.getElementById('galleryImage');
+
+        // Mouse events
+        galleryImage.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        document.addEventListener('mouseup', () => this.handleMouseUp());
+
+        // Wheel zoom
+        galleryImage.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+
+        // Touch events for mobile
+        galleryImage.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        galleryImage.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        galleryImage.addEventListener('touchend', () => this.handleTouchEnd());
+
+        // Prevent context menu on right click
+        galleryImage.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    handleMouseDown(e) {
+        if (!this.isModalOpen) return;
+
+        e.preventDefault();
+        this.isDragging = true;
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
+        this.imageStartOffsetX = this.imageOffsetX;
+        this.imageStartOffsetY = this.imageOffsetY;
+
+        const galleryImage = document.getElementById('galleryImage');
+        galleryImage.classList.add('dragging');
+
+        this.showZoomHint();
+    }
+
+    handleMouseMove(e) {
+        if (!this.isDragging || !this.isModalOpen) return;
+
+        e.preventDefault();
+        const deltaX = e.clientX - this.dragStartX;
+        const deltaY = e.clientY - this.dragStartY;
+
+        this.imageOffsetX = this.imageStartOffsetX + deltaX;
+        this.imageOffsetY = this.imageStartOffsetY + deltaY;
+
+        this.applyImageTransform();
+    }
+
+    handleMouseUp() {
+        if (!this.isDragging) return;
+
+        this.isDragging = false;
+        const galleryImage = document.getElementById('galleryImage');
+        galleryImage.classList.remove('dragging');
+
+        this.hideZoomHint();
+    }
+
+    handleWheel(e) {
+        if (!this.isModalOpen) return;
+
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        this.currentScale = Math.min(Math.max(this.currentScale + delta, 0.3), 5.0);
+
+        // Reset offset if zooming out to original size
+        if (this.currentScale <= 1.0) {
+            this.imageOffsetX = 0;
+            this.imageOffsetY = 0;
+        }
+
+        this.applyImageTransform();
+        this.showZoomHint();
+
+        // Hide hint after delay
+        clearTimeout(this.zoomHintTimeout);
+        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
+    }
+
+    handleTouchStart(e) {
+        if (!this.isModalOpen) return;
+
+        if (e.touches.length === 1) {
+            // Single touch - start dragging
+            const touch = e.touches[0];
+            this.isDragging = true;
+            this.dragStartX = touch.clientX;
+            this.dragStartY = touch.clientY;
+            this.imageStartOffsetX = this.imageOffsetX;
+            this.imageStartOffsetY = this.imageOffsetY;
+        } else if (e.touches.length === 2) {
+            // Two touches - prepare for pinch zoom
+            this.isDragging = false;
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            this.initialPinchDistance = this.getDistance(touch1, touch2);
+            this.initialScale = this.currentScale;
+        }
+    }
+
+    handleTouchMove(e) {
+        if (!this.isModalOpen) return;
+
+        e.preventDefault();
+
+        if (e.touches.length === 1 && this.isDragging) {
+            // Single touch - drag
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.dragStartX;
+            const deltaY = touch.clientY - this.dragStartY;
+
+            this.imageOffsetX = this.imageStartOffsetX + deltaX;
+            this.imageOffsetY = this.imageStartOffsetY + deltaY;
+
+            this.applyImageTransform();
+        } else if (e.touches.length === 2) {
+            // Two touches - pinch zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const distance = this.getDistance(touch1, touch2);
+            const scale = (distance / this.initialPinchDistance) * this.initialScale;
+
+            this.currentScale = Math.min(Math.max(scale, 0.3), 5.0);
+
+            // Reset offset if zooming out to original size
+            if (this.currentScale <= 1.0) {
+                this.imageOffsetX = 0;
+                this.imageOffsetY = 0;
+            }
+
+            this.applyImageTransform();
+        }
+    }
+
+    handleTouchEnd() {
+        this.isDragging = false;
+    }
+
+    getDistance(touch1, touch2) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
 
     increaseSize() {
-        this.currentScale = Math.min(this.currentScale + 0.2, 3.0);
+        this.currentScale = Math.min(this.currentScale + 0.2, 5.0);
         this.applyImageTransform();
+        this.showZoomHint();
+        clearTimeout(this.zoomHintTimeout);
+        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
     }
 
     decreaseSize() {
-        this.currentScale = Math.max(this.currentScale - 0.2, 0.5);
+        this.currentScale = Math.max(this.currentScale - 0.2, 0.3);
+        if (this.currentScale <= 1.0) {
+            this.imageOffsetX = 0;
+            this.imageOffsetY = 0;
+        }
         this.applyImageTransform();
+        this.showZoomHint();
+        clearTimeout(this.zoomHintTimeout);
+        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
     }
 
     applyImageTransform() {
         const image = document.getElementById('galleryImage');
         if (image) {
-            let transform = `scale(${this.currentScale})`;
+            let transform = `scale(${this.currentScale}) translate(${this.imageOffsetX / this.currentScale}px, ${this.imageOffsetY / this.currentScale}px)`;
             if (this.currentRotation !== 0) {
                 transform += ` rotate(${this.currentRotation}deg)`;
             }
@@ -159,48 +337,45 @@ class GalleryApp {
         }
     }
 
+    showZoomHint() {
+        let hint = document.querySelector('.zoom-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'zoom-hint';
+            hint.innerHTML = `Zoom: ${Math.round(this.currentScale * 100)}% • Scroll to zoom • Drag to pan`;
+            document.body.appendChild(hint);
+        } else {
+            hint.innerHTML = `Zoom: ${Math.round(this.currentScale * 100)}% • Scroll to zoom • Drag to pan`;
+        }
+
+        clearTimeout(hint.hideTimeout);
+        hint.classList.add('show');
+    }
+
+    hideZoomHint() {
+        const hint = document.querySelector('.zoom-hint');
+        if (hint) {
+            hint.classList.remove('show');
+            hint.hideTimeout = setTimeout(() => {
+                if (hint.parentNode) {
+                    document.body.removeChild(hint);
+                }
+            }, 300);
+        }
+    }
+
     setupTouchGestures() {
-        const image = document.getElementById('galleryImage');
-        if (!image) return;
-
-        let initialDistance = 0;
-        let initialScale = this.currentScale;
-
-        const getDistance = (touch1, touch2) => {
-            const dx = touch1.clientX - touch2.clientX;
-            const dy = touch1.clientY - touch2.clientY;
-            return Math.sqrt(dx * dx + dy * dy);
-        };
-
-        image.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                e.preventDefault();
-                initialDistance = getDistance(e.touches[0], e.touches[1]);
-                initialScale = this.currentScale;
-            }
-        });
-
-        image.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                e.preventDefault();
-                const currentDistance = getDistance(e.touches[0], e.touches[1]);
-                const scaleChange = currentDistance / initialDistance;
-                this.currentScale = Math.min(Math.max(initialScale * scaleChange, 0.5), 3.0);
-                this.applyImageTransform();
-            }
-        });
-
-        image.addEventListener('touchend', (e) => {
-            if (e.touches.length < 2) {
-                initialDistance = 0;
-            }
-        });
+        // This method is now handled by setupDragZoom()
+        // Kept for compatibility
     }
 
     openGallery(teamNumber, photoNumber) {
         this.currentTeam = teamNumber;
         this.currentPhoto = photoNumber;
         this.currentRotation = 0;
+        this.currentScale = 1.0;
+        this.imageOffsetX = 0;
+        this.imageOffsetY = 0;
 
         this.showModal('gallery');
         this.updateImage();
@@ -253,6 +428,13 @@ class GalleryApp {
         this.isModalOpen = false;
         window.history.pushState({}, '', window.location.pathname);
         this.hideKeyboardHint();
+        this.hideZoomHint();
+
+        // Reset image state
+        this.currentScale = 1.0;
+        this.imageOffsetX = 0;
+        this.imageOffsetY = 0;
+        this.currentRotation = 0;
     }
 
     closeStatsModal() {
@@ -290,9 +472,12 @@ class GalleryApp {
         galleryImage.src = imageUrl;
         galleryImage.alt = `${team.team_name} - Photo ${this.currentPhoto}`;
 
-        // Reset rotation
-        galleryImage.style.transform = '';
+        // Reset transform states
+        this.currentScale = 1.0;
+        this.imageOffsetX = 0;
+        this.imageOffsetY = 0;
         this.currentRotation = 0;
+        galleryImage.style.transform = '';
 
         // Update team info
         this.updateTeamInfo(team);
@@ -506,6 +691,25 @@ class GalleryApp {
                 e.preventDefault();
                 this.openTeamDetailsModal();
                 break;
+            case '=':
+            case '+':
+                e.preventDefault();
+                this.increaseSize();
+                break;
+            case '-':
+                e.preventDefault();
+                this.decreaseSize();
+                break;
+            case '0':
+                e.preventDefault();
+                this.currentScale = 1.0;
+                this.imageOffsetX = 0;
+                this.imageOffsetY = 0;
+                this.applyImageTransform();
+                this.showZoomHint();
+                clearTimeout(this.zoomHintTimeout);
+                this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
+                break;
         }
     }
 
@@ -556,7 +760,7 @@ class GalleryApp {
     createKeyboardHint() {
         const hint = document.createElement('div');
         hint.className = 'keyboard-hint';
-        hint.innerHTML = 'Arrow keys: navigate • R/L: rotate • I: team info • ESC: close';
+        hint.innerHTML = 'Arrow keys: navigate • +/-/0: zoom • Drag/Scroll: pan/zoom • R/L: rotate • I: team info • ESC: close';
         return hint;
     }
 
