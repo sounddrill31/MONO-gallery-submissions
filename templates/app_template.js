@@ -7,6 +7,7 @@ class GalleryApp {
         this.currentTeam = 1;
         this.currentPhoto = 1;
         this.currentRotation = 0;
+        this.currentScale = 1.0;
         this.isModalOpen = false;
         this.stats = this.calculateStats();
 
@@ -118,12 +119,81 @@ class GalleryApp {
             if (e.target.id === 'galleryModal') this.closeModal();
         });
 
+        // Size control events
+        document.getElementById('sizeDecreaseBtn').addEventListener('click', () => {
+            this.decreaseSize();
+        });
+
+        document.getElementById('sizeIncreaseBtn').addEventListener('click', () => {
+            this.increaseSize();
+        });
+
         document.getElementById('statsModal').addEventListener('click', (e) => {
             if (e.target.id === 'statsModal') this.closeStatsModal();
         });
 
         document.getElementById('teamDetailsModal').addEventListener('click', (e) => {
             if (e.target.id === 'teamDetailsModal') this.closeTeamDetailsModal();
+        });
+    }
+    
+
+    increaseSize() {
+        this.currentScale = Math.min(this.currentScale + 0.2, 3.0);
+        this.applyImageTransform();
+    }
+
+    decreaseSize() {
+        this.currentScale = Math.max(this.currentScale - 0.2, 0.5);
+        this.applyImageTransform();
+    }
+
+    applyImageTransform() {
+        const image = document.getElementById('galleryImage');
+        if (image) {
+            let transform = `scale(${this.currentScale})`;
+            if (this.currentRotation !== 0) {
+                transform += ` rotate(${this.currentRotation}deg)`;
+            }
+            image.style.transform = transform;
+        }
+    }
+
+    setupTouchGestures() {
+        const image = document.getElementById('galleryImage');
+        if (!image) return;
+
+        let initialDistance = 0;
+        let initialScale = this.currentScale;
+
+        const getDistance = (touch1, touch2) => {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        };
+
+        image.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                initialDistance = getDistance(e.touches[0], e.touches[1]);
+                initialScale = this.currentScale;
+            }
+        });
+
+        image.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const currentDistance = getDistance(e.touches[0], e.touches[1]);
+                const scaleChange = currentDistance / initialDistance;
+                this.currentScale = Math.min(Math.max(initialScale * scaleChange, 0.5), 3.0);
+                this.applyImageTransform();
+            }
+        });
+
+        image.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialDistance = 0;
+            }
         });
     }
 
@@ -391,9 +461,7 @@ class GalleryApp {
     rotateImage(degrees) {
         this.currentRotation = (this.currentRotation + degrees) % 360;
         if (this.currentRotation < 0) this.currentRotation += 360;
-
-        const galleryImage = document.getElementById('galleryImage');
-        galleryImage.style.transform = `rotate(${this.currentRotation}deg)`;
+        this.applyImageTransform();
     }
 
     handleKeyboard(e) {
