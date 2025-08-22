@@ -1,5 +1,5 @@
 // Photography Contest Gallery - MONO Design System
-// Enhanced with Stats Modal, Team Details, Drag-to-Zoom, and Blurred Previews
+// Enhanced with Stats Modal, Team Details, Drag-to-Zoom, and Optimized Image Loading
 
 class GalleryApp {
     constructor() {
@@ -9,7 +9,13 @@ class GalleryApp {
         this.currentRotation = 0;
         this.currentScale = 1.0;
         this.isModalOpen = false;
+        this.isTeamInfoVisible = false;
         this.stats = this.calculateStats();
+
+        // Image loading queue management (max 6 images in RAM)
+        this.imageCache = new Map();
+        this.maxCacheSize = 6;
+        this.preloadQueue = [];
 
         // Drag and zoom state
         this.isDragging = false;
@@ -67,6 +73,37 @@ class GalleryApp {
         return originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'blur=2&w=150&h=150&q=30';
     }
 
+    // Enhanced image cache management - only keep 6 images max, prioritize current
+    manageImageCache(priorityUrl, nearbyUrls = []) {
+        // Always keep priority URL first
+        const urlsToCache = [priorityUrl, ...nearbyUrls.filter(url => url !== priorityUrl)];
+        
+        // Remove excess images from cache
+        if (this.imageCache.size >= this.maxCacheSize) {
+            const cacheKeys = Array.from(this.imageCache.keys());
+            // Remove least recently used images not in current priority list
+            cacheKeys.forEach(key => {
+                if (!urlsToCache.includes(key) && this.imageCache.size > 3) {
+                    this.imageCache.delete(key);
+                }
+            });
+        }
+
+        // Preload priority images
+        urlsToCache.slice(0, this.maxCacheSize).forEach(url => {
+            if (url && !this.imageCache.has(url)) {
+                const img = new Image();
+                img.onload = () => {
+                    this.imageCache.set(url, img);
+                };
+                img.onerror = () => {
+                    console.warn('Failed to load image:', url);
+                };
+                img.src = url;
+            }
+        });
+    }
+
     renderGalleryGrid() {
         const grid = document.getElementById('galleryGrid');
         grid.innerHTML = '';
@@ -83,13 +120,17 @@ class GalleryApp {
 
         const courseClass = `course-${team.course.toLowerCase()}`;
 
+        // Ensure team name is always visible on the home screen
         card.innerHTML = `
             <div class="border-4 ${courseClass} bg-gray-50 hover:bg-gray-100 transition-colors">
-                <div class="p-4 border-b border-gray-300">
-                    <h3 class="font-bold text-lg">${team.team_name}</h3>
-                    <p class="text-sm opacity-70">Team #${team.team_number} • ${team.course}</p>
+                <!-- Team Name Header - Always Visible -->
+                <div class="p-4 border-b border-gray-300 bg-white">
+                    <h3 class="font-bold text-lg text-center whitespace-nowrap overflow-hidden text-ellipsis">${team.team_name}</h3>
+                    <p class="text-sm opacity-70 text-center">Team #${team.team_number} • ${team.course}</p>
+                    <p class="text-xs mt-1 opacity-60 text-center whitespace-nowrap overflow-hidden text-ellipsis">${team.members.join(', ')}</p>
                 </div>
 
+                <!-- Image Grid -->
                 <div class="grid grid-cols-2 gap-1 p-2">
                     ${team.images.map((img, index) => {
                         const previewUrl = this.generatePreviewUrl(img);
@@ -125,40 +166,81 @@ class GalleryApp {
         document.getElementById('statsBtn').addEventListener('click', () => this.openStatsModal());
         document.getElementById('closeStatsModal').addEventListener('click', () => this.closeStatsModal());
 
-        // Team details modal
-        document.getElementById('teamInfo').addEventListener('click', () => this.openTeamDetailsModal());
+        // Team details modal - Updated to handle proper stacking
+        document.getElementById('teamInfo').addEventListener('click', () => {
+            this.isTeamInfoVisible = false; // Hide current team info
+            this.updateTeamInfoVisibility();
+            this.openTeamDetailsModal();
+        });
         document.getElementById('closeTeamDetailsModal').addEventListener('click', () => this.closeTeamDetailsModal());
 
-        // Vote button
-        document.getElementById('voteBtn').addEventListener('click', () => this.handleVote());
+        // Size controls
+        document.getElementById('sizeIncreaseBtn').addEventListener('click', () => this.increaseSize());
+        document.getElementById('sizeDecreaseBtn').addEventListener('click', () => this.decreaseSize());
 
         // Keyboard navigation
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
-        // Modal overlay clicks
+        // Setup drag and zoom for gallery image
+        this.setupDragZoom();
+        this.setupTouchGestures();
+
+        // Vote button
+        document.getElementById('voteBtn').addEventListener('click', () => this.handleVote());
+
+        // ESC key to close all modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeAllModals();
+            }
+        });
+
+        // Enhanced click outside modal to close and manage team info stacking
         document.getElementById('galleryModal').addEventListener('click', (e) => {
-            if (e.target.id === 'galleryModal') this.closeModal();
-        });
-
-        // Size control events
-        document.getElementById('sizeDecreaseBtn').addEventListener('click', () => {
-            this.decreaseSize();
-        });
-
-        document.getElementById('sizeIncreaseBtn').addEventListener('click', () => {
-            this.increaseSize();
+            if (e.target === e.currentTarget) {
+                // If team details modal is open, close it and show team info
+                if (!document.getElementById('teamDetailsModal').classList.contains('hidden')) {
+                    this.closeTeamDetailsModal();
+                    this.isTeamInfoVisible = true;
+                    this.updateTeamInfoVisibility();
+                } else if (this.isTeamInfoVisible) {
+                    // If team info is visible, hide it and show image
+                    this.isTeamInfoVisible = false;
+                    this.updateTeamInfoVisibility();
+                } else {
+                    // Close modal entirely
+                    this.closeModal();
+                }
+            }
         });
 
         document.getElementById('statsModal').addEventListener('click', (e) => {
-            if (e.target.id === 'statsModal') this.closeStatsModal();
+            if (e.target === e.currentTarget) {
+                this.closeStatsModal();
+            }
         });
 
         document.getElementById('teamDetailsModal').addEventListener('click', (e) => {
-            if (e.target.id === 'teamDetailsModal') this.closeTeamDetailsModal();
+            if (e.target === e.currentTarget) {
+                this.closeTeamDetailsModal();
+            }
         });
+    }
 
-        // Drag and zoom events for gallery image
-        this.setupDragZoom();
+    // New method to manage team info visibility and stacking
+    updateTeamInfoVisibility() {
+        const teamInfo = document.getElementById('teamInfo');
+        const galleryImage = document.getElementById('galleryImage');
+        
+        if (this.isTeamInfoVisible) {
+            teamInfo.style.zIndex = '100';
+            teamInfo.style.opacity = '1';
+            galleryImage.style.zIndex = '1';
+        } else {
+            teamInfo.style.zIndex = '10';
+            teamInfo.style.opacity = '0.8';
+            galleryImage.style.zIndex = '5';
+        }
     }
 
     setupDragZoom() {
@@ -168,132 +250,101 @@ class GalleryApp {
         galleryImage.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         document.addEventListener('mouseup', () => this.handleMouseUp());
+        galleryImage.addEventListener('wheel', (e) => this.handleWheel(e));
 
-        // Wheel zoom
-        galleryImage.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
-
-        // Touch events for mobile
+        // Touch events
         galleryImage.addEventListener('touchstart', (e) => this.handleTouchStart(e));
-        galleryImage.addEventListener('touchmove', (e) => this.handleTouchMove(e));
-        galleryImage.addEventListener('touchend', () => this.handleTouchEnd());
-
-        // Prevent context menu on right click
-        galleryImage.addEventListener('contextmenu', (e) => e.preventDefault());
+        document.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        document.addEventListener('touchend', () => this.handleTouchEnd());
     }
 
     handleMouseDown(e) {
-        if (!this.isModalOpen) return;
-
-        e.preventDefault();
-        this.isDragging = true;
-        this.dragStartX = e.clientX;
-        this.dragStartY = e.clientY;
-        this.imageStartOffsetX = this.imageOffsetX;
-        this.imageStartOffsetY = this.imageOffsetY;
-
-        const galleryImage = document.getElementById('galleryImage');
-        galleryImage.classList.add('dragging');
-
-        this.showZoomHint();
+        if (e.button === 0) { // Left mouse button
+            this.isDragging = true;
+            this.dragStartX = e.clientX;
+            this.dragStartY = e.clientY;
+            this.imageStartOffsetX = this.imageOffsetX;
+            this.imageStartOffsetY = this.imageOffsetY;
+            
+            const galleryImage = document.getElementById('galleryImage');
+            galleryImage.classList.add('dragging');
+            e.preventDefault();
+        }
     }
 
     handleMouseMove(e) {
-        if (!this.isDragging || !this.isModalOpen) return;
-
-        e.preventDefault();
-        const deltaX = e.clientX - this.dragStartX;
-        const deltaY = e.clientY - this.dragStartY;
-
-        this.imageOffsetX = this.imageStartOffsetX + deltaX;
-        this.imageOffsetY = this.imageStartOffsetY + deltaY;
-
-        this.applyImageTransform();
+        if (this.isDragging) {
+            const deltaX = e.clientX - this.dragStartX;
+            const deltaY = e.clientY - this.dragStartY;
+            
+            this.imageOffsetX = this.imageStartOffsetX + deltaX;
+            this.imageOffsetY = this.imageStartOffsetY + deltaY;
+            
+            this.applyImageTransform();
+            this.showZoomHint();
+        }
     }
 
     handleMouseUp() {
-        if (!this.isDragging) return;
-
-        this.isDragging = false;
-        const galleryImage = document.getElementById('galleryImage');
-        galleryImage.classList.remove('dragging');
-
-        this.hideZoomHint();
+        if (this.isDragging) {
+            this.isDragging = false;
+            const galleryImage = document.getElementById('galleryImage');
+            galleryImage.classList.remove('dragging');
+            this.hideZoomHint();
+        }
     }
 
     handleWheel(e) {
-        if (!this.isModalOpen) return;
-
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 0.1 : -0.1;
-        this.currentScale = Math.min(Math.max(this.currentScale + delta, 0.3), 5.0);
-
-        // Reset offset if zooming out to original size
-        if (this.currentScale <= 1.0) {
-            this.imageOffsetX = 0;
-            this.imageOffsetY = 0;
-        }
-
+        const zoomSpeed = 0.1;
+        const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+        
+        this.currentScale = Math.max(0.5, Math.min(3.0, this.currentScale + delta));
         this.applyImageTransform();
         this.showZoomHint();
-
+        
         // Hide hint after delay
         clearTimeout(this.zoomHintTimeout);
-        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
+        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 1500);
     }
 
+    // Touch handling for mobile
     handleTouchStart(e) {
-        if (!this.isModalOpen) return;
-
         if (e.touches.length === 1) {
-            // Single touch - start dragging
-            const touch = e.touches[0];
+            // Single touch - start drag
             this.isDragging = true;
-            this.dragStartX = touch.clientX;
-            this.dragStartY = touch.clientY;
+            this.dragStartX = e.touches[0].clientX;
+            this.dragStartY = e.touches[0].clientY;
             this.imageStartOffsetX = this.imageOffsetX;
             this.imageStartOffsetY = this.imageOffsetY;
         } else if (e.touches.length === 2) {
             // Two touches - prepare for pinch zoom
             this.isDragging = false;
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            this.initialPinchDistance = this.getDistance(touch1, touch2);
-            this.initialScale = this.currentScale;
+            this.pinchStartDistance = this.getDistance(e.touches[0], e.touches[1]);
+            this.pinchStartScale = this.currentScale;
         }
+        e.preventDefault();
     }
 
     handleTouchMove(e) {
-        if (!this.isModalOpen) return;
-
-        e.preventDefault();
-
         if (e.touches.length === 1 && this.isDragging) {
-            // Single touch - drag
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - this.dragStartX;
-            const deltaY = touch.clientY - this.dragStartY;
-
+            // Single touch drag
+            const deltaX = e.touches[0].clientX - this.dragStartX;
+            const deltaY = e.touches[0].clientY - this.dragStartY;
+            
             this.imageOffsetX = this.imageStartOffsetX + deltaX;
             this.imageOffsetY = this.imageStartOffsetY + deltaY;
-
+            
             this.applyImageTransform();
         } else if (e.touches.length === 2) {
-            // Two touches - pinch zoom
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            const distance = this.getDistance(touch1, touch2);
-            const scale = (distance / this.initialPinchDistance) * this.initialScale;
-
-            this.currentScale = Math.min(Math.max(scale, 0.3), 5.0);
-
-            // Reset offset if zooming out to original size
-            if (this.currentScale <= 1.0) {
-                this.imageOffsetX = 0;
-                this.imageOffsetY = 0;
-            }
-
+            // Pinch zoom
+            const currentDistance = this.getDistance(e.touches[0], e.touches[1]);
+            const scaleChange = currentDistance / this.pinchStartDistance;
+            
+            this.currentScale = Math.max(0.5, Math.min(3.0, this.pinchStartScale * scaleChange));
             this.applyImageTransform();
         }
+        e.preventDefault();
     }
 
     handleTouchEnd() {
@@ -301,39 +352,29 @@ class GalleryApp {
     }
 
     getDistance(touch1, touch2) {
-        const dx = touch1.clientX - touch2.clientX;
-        const dy = touch1.clientY - touch2.clientY;
-        return Math.sqrt(dx * dx + dy * dy);
+        const deltaX = touch2.clientX - touch1.clientX;
+        const deltaY = touch2.clientY - touch1.clientY;
+        return Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     }
 
     increaseSize() {
-        this.currentScale = Math.min(this.currentScale + 0.2, 5.0);
+        this.currentScale = Math.min(3.0, this.currentScale + 0.2);
         this.applyImageTransform();
-        this.showZoomHint();
-        clearTimeout(this.zoomHintTimeout);
-        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
     }
 
     decreaseSize() {
-        this.currentScale = Math.max(this.currentScale - 0.2, 0.3);
-        if (this.currentScale <= 1.0) {
-            this.imageOffsetX = 0;
-            this.imageOffsetY = 0;
-        }
+        this.currentScale = Math.max(0.5, this.currentScale - 0.2);
         this.applyImageTransform();
-        this.showZoomHint();
-        clearTimeout(this.zoomHintTimeout);
-        this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
     }
 
     applyImageTransform() {
-        const image = document.getElementById('galleryImage');
-        if (image) {
-            let transform = `scale(${this.currentScale}) translate(${this.imageOffsetX / this.currentScale}px, ${this.imageOffsetY / this.currentScale}px)`;
+        const galleryImage = document.getElementById('galleryImage');
+        if (galleryImage) {
+            let transform = `translate(${this.imageOffsetX}px, ${this.imageOffsetY}px) scale(${this.currentScale})`;
             if (this.currentRotation !== 0) {
                 transform += ` rotate(${this.currentRotation}deg)`;
             }
-            image.style.transform = transform;
+            galleryImage.style.transform = transform;
         }
     }
 
@@ -342,13 +383,9 @@ class GalleryApp {
         if (!hint) {
             hint = document.createElement('div');
             hint.className = 'zoom-hint';
-            hint.innerHTML = `Zoom: ${Math.round(this.currentScale * 100)}% • Scroll to zoom • Drag to pan`;
+            hint.textContent = 'Drag to pan • Scroll to zoom • Touch: drag or pinch';
             document.body.appendChild(hint);
-        } else {
-            hint.innerHTML = `Zoom: ${Math.round(this.currentScale * 100)}% • Scroll to zoom • Drag to pan`;
         }
-
-        clearTimeout(hint.hideTimeout);
         hint.classList.add('show');
     }
 
@@ -356,17 +393,13 @@ class GalleryApp {
         const hint = document.querySelector('.zoom-hint');
         if (hint) {
             hint.classList.remove('show');
-            hint.hideTimeout = setTimeout(() => {
-                if (hint.parentNode) {
-                    document.body.removeChild(hint);
-                }
-            }, 300);
         }
     }
 
     setupTouchGestures() {
-        // This method is now handled by setupDragZoom()
-        // Kept for compatibility
+        // Additional touch gesture setup if needed
+        const galleryImage = document.getElementById('galleryImage');
+        galleryImage.style.touchAction = 'none'; // Prevent default touch behaviors
     }
 
     openGallery(teamNumber, photoNumber) {
@@ -376,131 +409,153 @@ class GalleryApp {
         this.currentScale = 1.0;
         this.imageOffsetX = 0;
         this.imageOffsetY = 0;
-
-        this.showModal('gallery');
+        this.isTeamInfoVisible = true; // Show team info by default
+        
+        this.showModal('galleryModal');
         this.updateImage();
-        this.updateURL();
+        this.updateTeamInfo();
+        this.updateTeamInfoVisibility();
         this.showKeyboardHint();
+        
+        // Focus management for better image loading
+        this.optimizeImageLoading();
+    }
+
+    // Optimize image loading around current image
+    optimizeImageLoading() {
+        const currentTeamData = this.teams.find(t => t.team_number === this.currentTeam);
+        if (!currentTeamData) return;
+        
+        const currentImageUrl = currentTeamData.images[this.currentPhoto - 1];
+        
+        // Get nearby images for preloading
+        const nearbyUrls = [];
+        
+        // Add other images from same team
+        currentTeamData.images.forEach((url, index) => {
+            if (index !== this.currentPhoto - 1) {
+                nearbyUrls.push(url);
+            }
+        });
+        
+        // Add images from adjacent teams
+        const currentTeamIndex = this.teams.findIndex(t => t.team_number === this.currentTeam);
+        if (currentTeamIndex > 0) {
+            this.teams[currentTeamIndex - 1].images.slice(0, 2).forEach(url => nearbyUrls.push(url));
+        }
+        if (currentTeamIndex < this.teams.length - 1) {
+            this.teams[currentTeamIndex + 1].images.slice(0, 2).forEach(url => nearbyUrls.push(url));
+        }
+        
+        // Manage cache with priority on current image
+        this.manageImageCache(currentImageUrl, nearbyUrls);
     }
 
     openStatsModal() {
-        this.showModal('stats');
+        this.showModal('statsModal');
         this.renderStats();
     }
 
     openTeamDetailsModal() {
-        if (!this.isModalOpen) return;
-
-        const team = this.teams.find(t => t.team_number === this.currentTeam);
-        if (team) {
-            this.showModal('teamDetails');
-            this.renderTeamDetails(team);
+        const teamData = this.teams.find(t => t.team_number === this.currentTeam);
+        if (teamData) {
+            this.showModal('teamDetailsModal');
+            this.renderTeamDetails(teamData);
         }
     }
 
-    showModal(type) {
-        const modals = ['gallery', 'stats', 'teamDetails'];
-
-        // Close all modals first
-        modals.forEach(modalType => {
-            const modal = document.getElementById(`${modalType}Modal`);
-            if (modal) {
-                modal.classList.remove('show');
-                modal.classList.add('hidden');
-            }
-        });
-
-        // Show requested modal
-        const targetModal = document.getElementById(`${type}Modal`);
-        if (targetModal) {
-            targetModal.classList.remove('hidden');
-            targetModal.classList.add('show');
+    showModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('show');
+            this.isModalOpen = true;
             document.body.style.overflow = 'hidden';
-
-            if (type === 'gallery') {
-                this.isModalOpen = true;
-            }
         }
     }
 
     closeModal() {
-        this.closeAllModals();
-        this.isModalOpen = false;
-        window.history.pushState({}, '', window.location.pathname);
-        this.hideKeyboardHint();
-        this.hideZoomHint();
-
-        // Reset image state
-        this.currentScale = 1.0;
-        this.imageOffsetX = 0;
-        this.imageOffsetY = 0;
-        this.currentRotation = 0;
+        const modal = document.getElementById('galleryModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('show');
+            this.isModalOpen = false;
+            this.isTeamInfoVisible = false;
+            document.body.style.overflow = '';
+            this.hideKeyboardHint();
+            this.hideZoomHint();
+        }
     }
 
     closeStatsModal() {
-        this.closeAllModals();
+        const modal = document.getElementById('statsModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
     }
 
     closeTeamDetailsModal() {
-        this.closeAllModals();
-        if (this.isModalOpen) {
-            // Return to gallery modal if it was open
-            this.showModal('gallery');
+        const modal = document.getElementById('teamDetailsModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('show');
+            // Return to team info view
+            this.isTeamInfoVisible = true;
+            this.updateTeamInfoVisibility();
         }
     }
 
     closeAllModals() {
-        const modals = ['galleryModal', 'statsModal', 'teamDetailsModal'];
-        modals.forEach(modalId => {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.remove('show');
-                modal.classList.add('hidden');
-            }
-        });
-        document.body.style.overflow = 'auto';
+        this.closeModal();
+        this.closeStatsModal();
+        this.closeTeamDetailsModal();
     }
 
+    // FORCE REFRESH IMAGE - Always reload image source
     updateImage() {
-        const team = this.teams.find(t => t.team_number === this.currentTeam);
-        if (!team) return;
+        const teamData = this.teams.find(t => t.team_number === this.currentTeam);
+        if (!teamData || !teamData.images[this.currentPhoto - 1]) return;
 
-        const imageUrl = team.images[this.currentPhoto - 1];
         const galleryImage = document.getElementById('galleryImage');
-
-        galleryImage.classList.add('loading');
-        galleryImage.src = imageUrl;
-        galleryImage.alt = `${team.team_name} - Photo ${this.currentPhoto}`;
-
-        // Reset transform states
+        const imageUrl = teamData.images[this.currentPhoto - 1];
+        
+        // FORCE REFRESH: Clear src first, then set new one
+        galleryImage.removeAttribute('src');
+        galleryImage.src = '';
+        
+        // Force browser to reload by adding timestamp
+        const refreshedUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        
+        setTimeout(() => {
+            galleryImage.src = refreshedUrl;
+        }, 50);
+        
+        // Reset transformations
+        this.currentRotation = 0;
         this.currentScale = 1.0;
         this.imageOffsetX = 0;
         this.imageOffsetY = 0;
-        this.currentRotation = 0;
-        galleryImage.style.transform = '';
+        this.applyImageTransform();
 
-        // Update team info
-        this.updateTeamInfo(team);
-
-        galleryImage.onload = () => {
-            galleryImage.classList.remove('loading');
-        };
+        this.updateURL();
     }
 
-    updateTeamInfo(team) {
-        document.getElementById('teamName').textContent = team.team_name;
-        document.getElementById('teamDetails').textContent = 
-            `Team #${team.team_number} • ${team.course} ${team.batch} • Semester ${team.semester}`;
-        document.getElementById('teamMembers').textContent = 
-            `Members: ${team.members.join(', ')}`;
-        document.getElementById('teamContact').textContent = 
-            `Contact: ${team.contact}`;
+    updateTeamInfo() {
+        const teamData = this.teams.find(t => t.team_number === this.currentTeam);
+        if (!teamData) return;
+
+        document.getElementById('teamName').textContent = teamData.team_name;
+        document.getElementById('teamDetails').textContent = `Team #${teamData.team_number} • ${teamData.course} • Photo ${this.currentPhoto}/${teamData.images.length}`;
+        document.getElementById('teamMembers').textContent = `Members: ${teamData.members.join(', ')}`;
+        document.getElementById('teamContact').textContent = `Contact: ${teamData.contact}`;
     }
 
     renderStats() {
-        const content = document.getElementById('statsContent');
-
-        content.innerHTML = `
+        const statsContent = document.getElementById('statsContent');
+        
+        statsContent.innerHTML = `
             <div class="stats-grid">
                 <div class="stat-card">
                     <span class="stat-number">${this.stats.totalTeams}</span>
@@ -514,138 +569,72 @@ class GalleryApp {
                     <span class="stat-number">${this.stats.averageTeamSize}</span>
                     <span class="stat-label">Avg Team Size</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-number">88</span>
-                    <span class="stat-label">Total Photos</span>
-                </div>
             </div>
 
-            <h3 class="text-xl font-bold mb-4">Course Distribution</h3>
-            <div class="space-y-3">
+            <div class="mt-6">
+                <h3 class="text-lg font-bold mb-4">Course Distribution</h3>
                 ${Object.entries(this.stats.courseDistribution).map(([course, count]) => {
-                    const percentage = (count / this.stats.totalTeams * 100).toFixed(1);
+                    const percentage = ((count / this.stats.totalTeams) * 100).toFixed(1);
                     return `
-                        <div>
-                            <div class="flex justify-between mb-1">
-                                <span class="font-bold">${course}</span>
-                                <span>${count} teams (${percentage}%)</span>
-                            </div>
-                            <div class="course-bar">
-                                <div class="course-bar-fill" style="width: ${percentage}%">
-                                    ${count}
-                                </div>
+                        <div class="course-bar">
+                            <div class="course-bar-label">${course}</div>
+                            <div class="course-bar-fill" style="width: ${percentage}%">
+                                ${count} teams (${percentage}%)
                             </div>
                         </div>
                     `;
                 }).join('')}
             </div>
-
-            <h3 class="text-xl font-bold mb-4 mt-8">Semester Distribution</h3>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                ${Object.entries(this.stats.semesterDistribution).map(([semester, count]) => `
-                    <div class="stat-card">
-                        <span class="stat-number">${count}</span>
-                        <span class="stat-label">Semester ${semester}</span>
-                    </div>
-                `).join('')}
-            </div>
         `;
     }
 
     renderTeamDetails(team) {
+        document.getElementById('teamDetailsTitle').textContent = `${team.team_name} - Team #${team.team_number}`;
+        
         const content = document.getElementById('teamDetailsContent');
-        const title = document.getElementById('teamDetailsTitle');
-
-        title.textContent = `${team.team_name} (#${team.team_number})`;
-
         content.innerHTML = `
             <table class="team-details-table">
-                <tr>
-                    <th>Team Name</th>
-                    <td>${team.team_name}</td>
-                </tr>
-                <tr>
-                    <th>Team Number</th>
-                    <td>#${team.team_number}</td>
-                </tr>
-                <tr>
-                    <th>Course</th>
-                    <td>${team.course} (Batch ${team.batch})</td>
-                </tr>
-                <tr>
-                    <th>Semester</th>
-                    <td>${team.semester}</td>
-                </tr>
-                <tr>
-                    <th>Members</th>
-                    <td>${team.members.join('<br>')}</td>
-                </tr>
-                <tr>
-                    <th>Contact</th>
-                    <td><a href="tel:${team.contact}" class="underline hover:no-underline">${team.contact}</a></td>
-                </tr>
-                <tr>
-                    <th>Submission Time</th>
-                    <td>${team.upload_time}</td>
-                </tr>
-                ${team.notes ? `
-                <tr>
-                    <th>Notes</th>
-                    <td>${team.notes}</td>
-                </tr>
-                ` : ''}
+                <tr><th>Team Name</th><td class="whitespace-nowrap overflow-x-auto text-ellipsis max-w-xs">${team.team_name}</td></tr>
+                <tr><th>Team Number</th><td>#${team.team_number}</td></tr>
+                <tr><th>Course</th><td>${team.course} (Batch ${team.batch})</td></tr>
+                <tr><th>Semester</th><td>${team.semester}</td></tr>
+                <tr><th>Members</th><td class="whitespace-nowrap overflow-x-auto text-ellipsis max-w-xs">${team.members.join(', ')}</td></tr>
+                <tr><th>Contact</th><td>${team.contact}</td></tr>
+                <tr><th>Submission Time</th><td>${team.upload_time}</td></tr>
+                <tr><th>Notes</th><td>${team.notes}</td></tr>
+                <tr><th>Total Images</th><td>${team.images.length}</td></tr>
             </table>
-
-            <div class="mt-6">
-                <h4 class="font-bold mb-3">Submitted Photos</h4>
-                <div class="grid grid-cols-2 gap-2">
-                    ${team.images.map((img, index) => `
-                        <div class="relative">
-                            <img src="${img}" 
-                                 alt="Photo ${index + 1}"
-                                 class="w-full aspect-square object-cover border border-gray-300 cursor-pointer hover:opacity-80"
-                                 onclick="window.galleryApp.closeTeamDetailsModal(); window.galleryApp.openGallery(${team.team_number}, ${index + 1});">
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
         `;
     }
 
     navigateImage(direction) {
-        this.currentPhoto += direction;
+        const teamData = this.teams.find(t => t.team_number === this.currentTeam);
+        if (!teamData) return;
 
-        // If we go beyond current team's images, switch to next/previous team
-        if (this.currentPhoto > 4) {
-            this.navigateTeam(1);
-            this.currentPhoto = 1;
-        } else if (this.currentPhoto < 1) {
-            this.navigateTeam(-1);
-            this.currentPhoto = 4;
+        const newPhoto = this.currentPhoto + direction;
+        if (newPhoto >= 1 && newPhoto <= teamData.images.length) {
+            this.currentPhoto = newPhoto;
+            this.updateImage(); // This now forces refresh
+            this.updateTeamInfo();
+            this.optimizeImageLoading(); // Re-optimize loading queue
         }
-
-        this.updateImage();
-        this.updateURL();
     }
 
     navigateTeam(direction) {
-        const teamNumbers = this.teams.map(t => t.team_number).sort((a, b) => a - b);
-        const currentIndex = teamNumbers.indexOf(this.currentTeam);
-        let newIndex = currentIndex + direction;
-
-        // Wrap around
-        if (newIndex >= teamNumbers.length) {
-            newIndex = 0;
-        } else if (newIndex < 0) {
-            newIndex = teamNumbers.length - 1;
+        const currentTeamIndex = this.teams.findIndex(t => t.team_number === this.currentTeam);
+        const newTeamIndex = currentTeamIndex + direction;
+        
+        if (newTeamIndex >= 0 && newTeamIndex < this.teams.length) {
+            this.currentTeam = this.teams[newTeamIndex].team_number;
+            this.currentPhoto = 1;
+            this.updateImage();
+            this.updateTeamInfo();
+            this.optimizeImageLoading();
         }
-
-        this.currentTeam = teamNumbers[newIndex];
     }
 
     rotateImage(degrees) {
         this.currentRotation = (this.currentRotation + degrees) % 360;
-        if (this.currentRotation < 0) this.currentRotation += 360;
         this.applyImageTransform();
     }
 
@@ -653,9 +642,6 @@ class GalleryApp {
         if (!this.isModalOpen) return;
 
         switch(e.key) {
-            case 'Escape':
-                this.closeModal();
-                break;
             case 'ArrowLeft':
                 e.preventDefault();
                 this.navigateImage(-1);
@@ -667,32 +653,18 @@ class GalleryApp {
             case 'ArrowUp':
                 e.preventDefault();
                 this.navigateTeam(-1);
-                this.updateImage();
-                this.updateURL();
                 break;
             case 'ArrowDown':
                 e.preventDefault();
                 this.navigateTeam(1);
-                this.updateImage();
-                this.updateURL();
                 break;
             case 'r':
             case 'R':
                 e.preventDefault();
                 this.rotateImage(90);
                 break;
-            case 'l':
-            case 'L':
-                e.preventDefault();
-                this.rotateImage(-90);
-                break;
-            case 'i':
-            case 'I':
-                e.preventDefault();
-                this.openTeamDetailsModal();
-                break;
-            case '=':
             case '+':
+            case '=':
                 e.preventDefault();
                 this.increaseSize();
                 break;
@@ -700,96 +672,74 @@ class GalleryApp {
                 e.preventDefault();
                 this.decreaseSize();
                 break;
-            case '0':
+            case 'i':
+            case 'I':
                 e.preventDefault();
-                this.currentScale = 1.0;
-                this.imageOffsetX = 0;
-                this.imageOffsetY = 0;
-                this.applyImageTransform();
-                this.showZoomHint();
-                clearTimeout(this.zoomHintTimeout);
-                this.zoomHintTimeout = setTimeout(() => this.hideZoomHint(), 2000);
+                this.isTeamInfoVisible = !this.isTeamInfoVisible;
+                this.updateTeamInfoVisibility();
                 break;
         }
     }
 
     updateURL() {
-        const params = new URLSearchParams();
-        params.set('team', this.currentTeam);
-        params.set('photo', this.currentPhoto);
-        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        const url = new URL(window.location);
+        url.searchParams.set('team', this.currentTeam);
+        url.searchParams.set('photo', this.currentPhoto);
+        window.history.replaceState({}, '', url);
     }
 
     handleURLParams() {
-        const params = new URLSearchParams(window.location.search);
-        const team = parseInt(params.get('team'));
-        const photo = parseInt(params.get('photo'));
-
+        const urlParams = new URLSearchParams(window.location.search);
+        const team = urlParams.get('team');
+        const photo = urlParams.get('photo');
+        
         if (team && photo) {
-            setTimeout(() => {
-                this.openGallery(team, photo);
-            }, 100);
+            this.openGallery(parseInt(team), parseInt(photo));
         }
     }
 
     preloadImages() {
-        // Preload first few team images
-        this.teams.slice(0, 5).forEach(team => {
-            team.images.forEach(imageUrl => {
-                const img = new Image();
-                img.src = imageUrl;
-            });
-        });
+        // Enhanced preloading - only preload first team's images initially
+        const firstTeam = this.teams[0];
+        if (firstTeam) {
+            this.manageImageCache(firstTeam.images[0], firstTeam.images.slice(1, 4));
+        }
     }
 
     showKeyboardHint() {
-        const hint = this.createKeyboardHint();
-        document.body.appendChild(hint);
-
-        setTimeout(() => hint.classList.add('show'), 100);
-        setTimeout(() => {
-            hint.classList.remove('show');
-            setTimeout(() => {
-                if (hint.parentNode) {
-                    document.body.removeChild(hint);
-                }
-            }, 300);
-        }, 4000);
+        let hint = document.querySelector('.keyboard-hint');
+        if (!hint) {
+            hint = this.createKeyboardHint();
+        }
+        hint.classList.add('show');
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => this.hideKeyboardHint(), 3000);
     }
 
     createKeyboardHint() {
         const hint = document.createElement('div');
         hint.className = 'keyboard-hint';
-        hint.innerHTML = 'Arrow keys: navigate • +/-/0: zoom • Drag/Scroll: pan/zoom • R/L: rotate • I: team info • ESC: close';
+        hint.innerHTML = '← → Navigate Photos • ↑ ↓ Navigate Teams • R Rotate • + - Zoom • I Toggle Info • ESC Close';
+        document.body.appendChild(hint);
         return hint;
     }
 
     hideKeyboardHint() {
-        const hints = document.querySelectorAll('.keyboard-hint');
-        hints.forEach(hint => {
+        const hint = document.querySelector('.keyboard-hint');
+        if (hint) {
             hint.classList.remove('show');
-            setTimeout(() => {
-                if (hint.parentNode) {
-                    hint.parentNode.removeChild(hint);
-                }
-            }, 300);
-        });
+        }
     }
 
     handleVote() {
-        // Open voting popup (currently hidden)
-        window.open('https://google.com', '_blank', 'width=800,height=600');
+        if (this.isModalOpen) {
+            alert(`Vote submitted for ${this.teams.find(t => t.team_number === this.currentTeam)?.team_name} - Photo ${this.currentPhoto}`);
+        }
     }
 }
 
-// Initialize app when DOM is loaded
+// Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.galleryApp = new GalleryApp();
-});
-
-// Handle browser back/forward navigation
-window.addEventListener('popstate', () => {
-    if (window.galleryApp) {
-        window.galleryApp.handleURLParams();
-    }
 });
