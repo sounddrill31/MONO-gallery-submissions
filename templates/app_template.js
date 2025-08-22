@@ -494,7 +494,8 @@ class GalleryApp {
     }
 
     openTeamDetailsModal() {
-        if (!this.isModalOpen) return;
+        if (!this.isModalOpen) this.isModalOpen = true;
+
         const team = this.teams.find(t => t.team_number === this.currentTeam);
         if (team) {
             this.showModal('teamDetails');
