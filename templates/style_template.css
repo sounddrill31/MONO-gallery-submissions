@@ -171,10 +171,15 @@ body {
     z-index: 1000;
     padding: 1rem;
     box-sizing: border-box;
+    cursor: pointer; 
 }
 
 #teamInfo:hover {
     background: rgba(0, 0, 0, 0.9);
+}
+
+#teamInfo * {
+        pointer-events: none;
 }
 
 /* Stats content styling */
