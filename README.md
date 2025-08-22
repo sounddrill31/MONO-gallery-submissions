@@ -15,6 +15,11 @@ This is a WIP project to turn this data into a beautiful website inspired by [MO
 
 TODO: Add direct downloads or local file paths.
 
+Supported Sources:
+- [x] Google Drive
+- [ ] Local file path
+- [ ] Direct download
+
 ## Config
 
 ### Example teams.yaml
