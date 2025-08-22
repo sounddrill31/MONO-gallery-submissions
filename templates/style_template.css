@@ -297,7 +297,7 @@ body {
     padding: 0.75rem 1.5rem;
     border-radius: 4px;
     font-size: 0.75rem;
-    z-index: 70;
+    z-index: 1010;
     opacity: 0;
     transition: opacity 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -319,7 +319,7 @@ body {
     padding: 0.5rem 1rem;
     border-radius: 4px;
     font-size: 0.7rem;
-    z-index: 65;
+    z-index: 1010;
     opacity: 0;
     transition: opacity 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.2);
