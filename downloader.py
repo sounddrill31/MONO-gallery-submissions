@@ -114,16 +114,24 @@ def convert_pdf_to_avif(input_path):
 
 def convert_to_avif_high_quality(input_path):
     try:
-        im = Image.open(input_path)
-        avif_path = os.path.splitext(input_path)[0] + '.avif'
-        im.save(avif_path, format='AVIF', quality=80, speed=6)
-        os.remove(input_path)
-        print(f"Converted {input_path} to {avif_path} (AVIF, quality=80)")
-        return avif_path
+        # Open and convert the image
+        with Image.open(input_path) as im:
+            avif_path = os.path.splitext(input_path)[0] + '.avif'
+            im.save(avif_path, format='AVIF', quality=80, speed=6)
+        
+        # Verify the AVIF file was created and is not empty
+        if os.path.exists(avif_path) and os.path.getsize(avif_path) > 1024:  # Ensure file is > 1KB
+            # Explicitly delete the original file
+            os.remove(input_path)
+            print(f"Converted {input_path} to {avif_path} (AVIF, quality=80)")
+            print(f"Deleted original file: {input_path}")
+            return avif_path
+        else:
+            log_failure(f"AVIF file {avif_path} was not created or is too small")
+            return None
     except Exception as e:
         log_failure(f"AVIF conversion failed for {input_path}: {e}")
         return None
-
 
 def download_file_from_drive(file_id, output_base, uncompressed=False, max_retries=3):
     session = requests.Session()
